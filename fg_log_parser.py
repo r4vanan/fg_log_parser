@@ -48,6 +48,7 @@ try:
     import sys
     import logging as log
     import ipaddress
+    import datetime
 except ImportError as ioex:
     log.error("Could not import a required module")
     log.error(ioex)
@@ -233,25 +234,39 @@ def get_communication_matrix(logfile,
 
             # get() does substitute missing values with None
             # missing log fields will show None in the matrix
-            srcip = logline.get(srcipfield)
-            dstip = logline.get(dstipfield)
+            srcip = logline.get(srcipfield, "IP not found")
+            dstip = logline.get(dstipfield, "Not found")
             dstport = logline.get(dstportfield)
             proto = translate_protonr(logline.get(protofield))
+            itime = logline.get('itime', 'Unknown time')
+            
+            # Convert Unix timestamp to human-readable format
+            try:
+                time = datetime.datetime.fromtimestamp(int(itime)).strftime('%Y-%m-%d %H:%M:%S')
+            except (ValueError, TypeError):
+                time = 'Unknown time'
             
             # Check IP types
-            check_ip_type(srcip)
-            check_ip_type(dstip)
+            if not noipcheck:
+                check_ip_type(srcip)
+                check_ip_type(dstip)
             
             # user has set --action
             if showaction:
                 action = parse_and_display_action(line)  # Use parse_and_display_action to get the action value
+            else:
+                action = None
             # user has set --service
             if service:
                 service_value = parse_and_display_services(line)  # Correctly assign the service value
+            else:
+                service_value = None
             # if user has set --countbytes
             if countbytes:
                 sentbytes = int(logline.get(sentbytesfield, 0))
                 rcvdbytes = int(logline.get(rcvdbytesfield, 0))
+            else:
+                sentbytes = rcvdbytes = 0
 
             # extend matrix for each source ip
             srcip_dict = matrix.setdefault(srcip, {})
@@ -260,7 +275,7 @@ def get_communication_matrix(logfile,
             # extend matrix for each port in comm. pair
             dstport_dict = dstip_dict.setdefault(dstport, {})
             # if proto not in matrix extend matrix
-            proto_dict = dstport_dict.setdefault(proto, {"count": 0})
+            proto_dict = dstport_dict.setdefault(proto, {"count": 0, "time": time})
             proto_dict["count"] += 1
 
             if showaction:
@@ -270,6 +285,9 @@ def get_communication_matrix(logfile,
             if countbytes:
                 proto_dict["sentbytes"] = proto_dict.get("sentbytes", 0) + sentbytes
                 proto_dict["rcvdbytes"] = proto_dict.get("rcvdbytes", 0) + rcvdbytes
+
+            # Print the log line for debugging
+            log.debug("Processed line %s: %s", linecount, line.strip())
 
         log.info("Parsed %s lines in logfile: %s ", linecount, logfile)
     return matrix
@@ -404,7 +422,10 @@ def main():
     matrix = get_communication_matrix(logfile, logformat, countbytes, noipcheck, showaction, service)  # Pass service
     log.debug("Communication matrix: %s", matrix)
     if onlyports:
-        print_communication_matrix(matrix, onlyports)
+        if not print_communication_matrix(matrix, onlyports):
+            print("port not found!")
+        else:
+            print_communication_matrix(matrix, onlyports)
     elif csv:
         print_communication_matrix_as_csv(matrix, countbytes, showaction, service)
     else:
