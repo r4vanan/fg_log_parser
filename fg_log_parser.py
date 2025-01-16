@@ -293,7 +293,9 @@ def get_communication_matrix(logfile,
                 # Print the log line for debugging
                 log.debug("Processed line %s: %s", linecount, line.strip())
                 pbar.update(1)
-            pbar.clear()  # Ensure the progress bar is closed after processing
+            pbar.close()  # Ensure the progress bar is closed after processing
+            print("\033[F\033[K", end="")  # Remove the last line
+
     log.info("Parsed %s lines in logfile: %s ", linecount, logfile)
     return matrix
 
